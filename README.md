@@ -12,7 +12,7 @@ If you have `go` installed, you may fetch and build via
 
     go get -u github.com/birkland/fcr-listen
 
-If you run with no arguments, it will attempt to connect to a STOMP messaging enndpoint on localhost (port 61613).  This will connect to a locally-running Fedora configured with default settings.
+If you run with no arguments, it will attempt to connect to a STOMP messaging endpoint on localhost (port 61613).  This will connect to a locally-running Fedora configured with default settings.
 
     fcr-listen
 
@@ -33,14 +33,13 @@ Override whatever defaults you wish
 
 If no connection is possibe (i.e. Fedora or its messaging bus are down), it will try to connect every three seconds in an infinite loop, printing to STDERR each time:
 
-$ fcr-listen
-
+    $ fcr-listen
     2017/10/12 15:07:08 main.go:39: Could not connect! dial tcp [::1]:61613: connectex: No connection could be made because the target machine actively refused it.
     2017/10/12 15:07:11 main.go:39: Could not connect! dial tcp [::1]:61613: connectex: No connection could be made because the target machine actively refused it.
 
 If successful, you'll see a logging message (sent to STDERR)
 
-    # fcr-listen
+    $ fcr-listen
     2017/10/12 19:08:30 main.go:65: Subscribed to /topic/fedora
 
 For each message recieved, the following will be printed to STDOUT
