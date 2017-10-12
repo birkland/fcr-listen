@@ -69,7 +69,8 @@ func listen(conn *stomp.Conn) (err error) {
 		fmt.Println()
 
 		for i := 0; i < msg.Header.Len(); i++ {
-			printHeader(fmt.Sprint(msg.Header.GetAt(i)))
+			key, val := msg.Header.GetAt(i);
+			printHeader(fmt.Sprintf("%s = %s", key, val))
 		}
 
 		printBody(string(msg.Body[:]))
