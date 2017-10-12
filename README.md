@@ -59,3 +59,15 @@ Fedora message bodies are JSON, printed on a single line.  The output can be pip
 To ignore headers and pretty print the JSON bodies of message:
 
     fcr-listen | grep '{' | jq .
+
+## Building
+
+To produce a statically linked, platform-specific binary (for example, 64-bit linux), do
+
+    env GOOS=linux GOARCH=amd64 go build -v github.com/birkland/fcr-listen
+
+Consult the [go documentation](https://golang.org/doc/install/source#environment) for valid values of `GOOS` and `GOARCH`.
+Some ubiquitous values are:
+* `GOOS=linux GOARCH=amd64`
+* `GOOS=darwin GOARCH=amd64`
+* `GOOS=windows GOARCH=amd64`
