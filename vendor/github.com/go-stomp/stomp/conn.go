@@ -28,6 +28,7 @@ type Conn struct {
 	readTimeout  time.Duration
 	writeTimeout time.Duration
 	closed       bool
+	closeMutex   *sync.Mutex
 	options      *connOptions
 }
 
@@ -68,15 +69,28 @@ func Connect(conn io.ReadWriteCloser, opts ...func(*Conn) error) (*Conn, error) 
 	writer := frame.NewWriter(conn)
 
 	c := &Conn{
-		conn:    conn,
-		readCh:  make(chan *frame.Frame, 8),
-		writeCh: make(chan writeRequest, 8),
+		conn:       conn,
+		closeMutex: &sync.Mutex{},
 	}
 
 	options, err := newConnOptions(c, opts)
 	if err != nil {
 		return nil, err
 	}
+
+	readChannelCapacity := 20
+	writeChannelCapacity := 20
+
+	if options.ReadChannelCapacity > 0 {
+		readChannelCapacity = options.ReadChannelCapacity
+	}
+
+	if options.WriteChannelCapacity > 0 {
+		writeChannelCapacity = options.WriteChannelCapacity
+	}
+
+	c.readCh = make(chan *frame.Frame, readChannelCapacity)
+	c.writeCh = make(chan writeRequest, writeChannelCapacity)
 
 	if options.Host == "" {
 		// host not specified yet, attempt to get from net.Conn if possible
@@ -284,6 +298,8 @@ func processLoop(c *Conn, writer *frame.Writer) {
 					close(ch)
 				}
 
+				c.closeMutex.Lock()
+				defer c.closeMutex.Unlock()
 				c.closed = true
 				c.conn.Close()
 
@@ -354,6 +370,8 @@ func sendError(m map[string]chan *frame.Frame, err error) {
 // with the STOMP server is closed and any further attempt to write
 // to the server will fail.
 func (c *Conn) Disconnect() error {
+	c.closeMutex.Lock()
+	defer c.closeMutex.Unlock()
 	if c.closed {
 		return nil
 	}
@@ -377,6 +395,8 @@ func (c *Conn) Disconnect() error {
 // This method should be used only as last resort when there are fatal
 // network errors that prevent to do a proper disconnect from the server.
 func (c *Conn) MustDisconnect() error {
+	c.closeMutex.Lock()
+	defer c.closeMutex.Unlock()
 	if c.closed {
 		return nil
 	}
@@ -398,6 +418,8 @@ func (c *Conn) MustDisconnect() error {
 // Any number of options can be specified in opts. See the examples for usage. Options include whether
 // to receive a RECEIPT, should the content-length be suppressed, and sending custom header entries.
 func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*frame.Frame) error) error {
+	c.closeMutex.Lock()
+	defer c.closeMutex.Unlock()
 	if c.closed {
 		return ErrAlreadyClosed
 	}
@@ -433,6 +455,10 @@ func createSendFrame(destination, contentType string, body []byte, opts []func(*
 	// an opportunity to remove content-length.
 	f := frame.New(frame.SEND, frame.ContentLength, strconv.Itoa(len(body)))
 	f.Body = body
+	f.Header.Set(frame.Destination, destination)
+	if contentType != "" {
+		f.Header.Set(frame.ContentType, contentType)
+	}
 
 	for _, opt := range opts {
 		if opt == nil {
@@ -441,12 +467,6 @@ func createSendFrame(destination, contentType string, body []byte, opts []func(*
 		if err := opt(f); err != nil {
 			return nil, err
 		}
-	}
-
-	f.Header.Set(frame.Destination, destination)
-
-	if contentType != "" {
-		f.Header.Set(frame.ContentType, contentType)
 	}
 
 	return f, nil
@@ -529,19 +549,24 @@ func (c *Conn) Subscribe(destination string, ack AckMode, opts ...func(*frame.Fr
 		C:     ch,
 	}
 
+	closeMutex := &sync.Mutex{}
 	sub := &Subscription{
-		id:             id,
-		destination:    destination,
-		conn:           c,
-		ackMode:        ack,
-		C:              make(chan *Message, 16),
-		completedMutex: &sync.Mutex{},
+		id:          id,
+		destination: destination,
+		conn:        c,
+		ackMode:     ack,
+		C:           make(chan *Message, 16),
+		closeMutex:  closeMutex,
+		closeCond:   sync.NewCond(closeMutex),
 	}
 	go sub.readLoop(ch)
 
+	// TODO is this safe? There is no check if writeCh is actually open.
 	c.writeCh <- request
 	return sub, nil
 }
+
+// TODO check further for race conditions
 
 // Ack acknowledges a message received from the STOMP server.
 // If the message was received on a subscription with AckMode == AckAuto,
