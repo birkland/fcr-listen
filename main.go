@@ -3,11 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/fatih/color"
-	"github.com/go-stomp/stomp"
 	"log"
 	"strings"
 	"time"
+
+	"github.com/fatih/color"
+	"github.com/go-stomp/stomp"
 )
 
 var (
@@ -52,8 +53,7 @@ func perform(task func(*stomp.Conn) error) (err error) {
 func connect() (*stomp.Conn, error) {
 	return stomp.Dial("tcp", fmt.Sprint(host, ":", port),
 		stomp.ConnOpt.AcceptVersion(stomp.V12),
-		stomp.ConnOpt.HeartBeat(10*time.Second, 30*time.Second),
-		stomp.ConnOpt.HeartBeatError(10*time.Second))
+		stomp.ConnOpt.HeartBeat(10*time.Second, 5*time.Second))
 }
 
 func listen(conn *stomp.Conn) (err error) {
@@ -64,12 +64,16 @@ func listen(conn *stomp.Conn) (err error) {
 	}
 	log.Println("Subscribed to", subname)
 
+	defer func() {
+		sub.Unsubscribe()
+	}()
+
 	for msg := range sub.C {
 
 		fmt.Println()
 
 		for i := 0; i < msg.Header.Len(); i++ {
-			key, val := msg.Header.GetAt(i);
+			key, val := msg.Header.GetAt(i)
 			printHeader(fmt.Sprintf("%s = %s", key, val))
 		}
 
